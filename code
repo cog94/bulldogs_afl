@@ -1,0 +1,115 @@
+#!/usr/bin/python3
+
+import praw
+import re
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
+
+
+reddit = praw.Reddit(
+    user_agent="windows:com.alfcount:v1.0.0 (by /u/numpty_)",
+    client_id="",
+    client_secret="",
+    username="numpty_",
+    password=""
+)
+
+# Define the table of nicknames for each player
+NICKNAMES = {
+    "moody": ["josh moody", "j moody", "moody j"],
+    "blackburn": ["mitchell blackburn", "m blackburn", "blackburn m"],
+    "edmonds": ["ed", "edmonds r"],
+    "richards": ["ads", "richard"],
+    "treloar": ["ads", "adam", "adam treloar"],
+    "english": ["ostrich", "chilli", "johnny"],
+    "libba": ["liberatore", "tom", "tom liberatore"],
+    "naughton": ["noughts", "aaron", "aaron naughton"],
+    "bont": ["marcus", "bontempelli"],
+    "dale": ["bailey dale"],
+}
+
+# Get the most recent post with "Player of the Year" in the title from the subreddit "westernbulldogs"
+subreddit = reddit.subreddit("westernbulldogs")
+posts = subreddit.search("title:'Player of the Year'", sort="new", limit=1)
+
+# Get the comments from the most recent post
+for post in posts:
+    comments = post.comments
+    break
+
+# Extract the votes for each player from the comments
+player_votes = {}
+no_matches = []
+processed_comments = set()
+for comment in comments:
+    if comment.id in processed_comments:
+        continue
+    processed_comments.add(comment.id)
+    # Find the pattern of a number followed by a dash or period, space, and then a string of letters and spaces
+    pattern = r"(?<!\S)(\d)[\.\:;]?[\-\s]*([a-zA-Z]{2,}\s*)(?!\S)"
+    matches = re.findall(pattern, comment.body)
+    if not matches:
+        no_matches.append(comment.body)
+        print(f"\nNo matches found in comment: {comment.body}")
+    else:
+        # Create a list to store the votes extracted for each match in the comment
+        extracted_votes = []
+        for match in matches:
+            try:
+                num, player_names = match[0], match[1:]
+                votes = int(num)
+                for player_name in player_names:
+                    player_name = player_name.strip().lower()  # Remove spaces and make the name lowercase
+
+                    # Check if the player name matches a nickname in the table
+                    for player, nicknames in NICKNAMES.items():
+                        if player_name in nicknames:
+                            player_votes[player] = player_votes.get(player, 0) + votes
+                            break  # Stop searching for nicknames if a match is found
+
+                    # If the player name doesn't match any nickname, use the original name
+                    else:
+                        player_votes[player_name] = player_votes.get(player_name, 0) + votes
+                # Add the votes extracted for the match to the list
+                extracted_votes.append((num, player_names))
+            except ValueError:
+                print("Error with comment:", comment.body)
+                no_matches.append(comment.body)
+
+        # Print votes extracted for each match in the comment
+        print(f"\nComment:\n {comment.body}\nVotes extracted:")
+        for extracted_vote in extracted_votes:
+            num, player_names = extracted_vote
+            for player_name in player_names:
+                print(f"{num} for {player_name.capitalize()}")
+       	print(f"\n")
+
+# Print the results
+sorted_player_votes = sorted(player_votes.items(), key=lambda x: x[1], reverse=True)
+for player, votes in sorted_player_votes:
+    print(player.capitalize() + ":", votes)
+
+# Print comments that didn't match the pattern
+print("\nNo matches found in comments:")
+for comment in no_matches:
+    print(comment)
+
+# define the credentials for accessing the Google Sheets API
+scope = ['https://spreadsheets.google.com/feeds',
+		'https://www.googleapis.com/auth/drive']
+creds = ServiceAccountCredentials.from_json_keyfile_name("C:/Users/x/Programming/Python/Bulldogs AFL/x.json", scope)
+client = gspread.authorize(creds)
+
+# open the existing spreadsheet by title
+spreadsheet_name = 'Bulldogs AFL 2023 - Player Votes'
+sheet = client.open(spreadsheet_name)
+
+# add a new worksheet to the spreadsheet
+worksheet_title = 'Week 2'
+worksheet = sheet.add_worksheet(title=worksheet_title, rows=100, cols=20)
+
+# write the results to the worksheet
+sorted_player_votes = sorted(player_votes.items(), key=lambda x: x[1], reverse=True)
+for i, (player, votes) in enumerate(sorted_player_votes):
+    worksheet.update_cell(i+1, 1, player.capitalize())
+    worksheet.update_cell(i+1, 2, votes)
