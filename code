@@ -47,19 +47,12 @@ for comment in comments:
         continue  # Skip this comment if the author has already been processed
     processed_users.add(comment.author.name)
 
-    # Check if the comment includes 1, 2, and 3 in any form
-    num_pattern = r"[1-3]|[oO][nN][eE]|[tT][wW][oO]|[tT][hH][rR][eE][eE]|[1-3]\."
-    if not re.findall(num_pattern, comment.body):
-        no_matches.append(comment.body)
-        print(f"\nNo matches found in comment: {comment.body}")
-        processed_users.remove(comment.author.name)
-        continue
-
     # Find the pattern of a number followed by a dash or period, space, and then a string of letters and spaces
     pattern = r"(?<!\S)(\d)[\.\:;]?[\-\s]*([a-zA-Z]{2,}\s*)(?!\S)"
     matches = re.findall(pattern, comment.body)
     if not matches:
         no_matches.append(comment.body)
+        processed_users.remove(comment.author.name)
         print(f"\nNo matches found in comment: {comment.body}")
     else:
         # Create a list to store the votes extracted for each match in the comment
@@ -67,24 +60,27 @@ for comment in comments:
         for match in matches:
             try:
                 num, player_names = match[0], match[1:]
-                votes = int(num)
-                for player_name in player_names:
-                    player_name = player_name.strip().lower()  # Remove spaces and make the name lowercase
+                if num in ['1', '2', '3']:  # Only process votes if num is 1, 2, or 3
+                    votes = int(num)
 
-                    # Check if the player name matches a nickname in the table
-                    for player, nicknames in NICKNAMES.items():
-                        if player_name in nicknames:
-                            player_votes[player] = player_votes.get(player, 0) + votes
-                            break  # Stop searching for nicknames if a match is found
+                    for player_name in player_names:
+                        player_name = player_name.strip().lower()  # Remove spaces and make the name lowercase
 
-                    # If the player name doesn't match any nickname, use the original name
-                    else:
-                        player_votes[player_name] = player_votes.get(player_name, 0) + votes
-                # Add the votes extracted for the match to the list
-                extracted_votes.append((num, player_names))
+                        # Check if the player name matches a nickname in the table
+                        for player, nicknames in NICKNAMES.items():
+                            if player_name in nicknames:
+                                player_votes[player] = player_votes.get(player, 0) + votes
+                                break  # Stop searching for nicknames if a match is found
+
+                        # If the player name doesn't match any nickname, use the original name
+                        else:
+                            player_votes[player_name] = player_votes.get(player_name, 0) + votes
+                    # Add the votes extracted for the match to the list
+                    extracted_votes.append((num, player_names))
             except ValueError:
                 print("Error with comment:", comment.body)
                 no_matches.append(comment.body)
+                processed_users.remove(comment.author.name)
 
         # Print votes extracted for each match in the comment
         print(f"\nComment:\n {comment.body}\nVotes extracted:")
